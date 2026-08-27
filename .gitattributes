@@ -1,0 +1,73 @@
+# =============================================================================
+# Git attributes for Clock32 (STM32F103 + FreeRTOS + CMake)
+# =============================================================================
+
+# Normalize all text files (store LF in repo, checkout native endings)
+* text=auto
+
+# -----------------------------------------------------------------------------
+# Source code & config (text)
+# -----------------------------------------------------------------------------
+*.c            text
+*.h            text
+*.s            text
+*.S            text
+*.ld           text
+*.ioc          text
+*.cmake        text
+CMakeLists.txt text
+CMakePresets.json text
+*.json         text
+*.md           text
+*.yml          text
+*.yaml         text
+*.xml          text
+*.ini          text
+*.cfg          text
+*.py           text
+*.bat          text
+*.ps1          text
+*.sh           text
+
+# -----------------------------------------------------------------------------
+# Binary artifacts (never diff as text)
+# -----------------------------------------------------------------------------
+*.bin    binary
+*.elf    binary
+*.axf    binary
+*.o      binary
+*.a      binary
+*.lib    binary
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+
+# Images & fonts
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.bmp    binary
+*.ttf    binary
+*.otf    binary
+*.woff   binary
+*.woff2  binary
+
+# -----------------------------------------------------------------------------
+# GitHub Linguist — treat vendor / third-party code as vendored so repo
+# statistics and diffs only reflect the project's own code.
+# -----------------------------------------------------------------------------
+Drivers/**       linguist-vendored
+Middlewares/**   linguist-vendored
+u8g2/**          linguist-vendored
+
+# CubeMX/HAL glue that is regenerated, not hand-written
+stm32f1xx_hal_conf.h          linguist-generated
+stm32f1xx_hal_msp.c           linguist-generated
+stm32f1xx_it.c                linguist-generated
+stm32f1xx_it.h                linguist-generated
+stm32f1xx_hal_timebase_tim.c  linguist-generated
+system_stm32f1xx.c            linguist-generated
+startup_stm32f103xb.s         linguist-generated
