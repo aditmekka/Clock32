@@ -38,5 +38,6 @@ extern u8g2_t u8g2;
 void display_init(void);
 
 void draw_clock_date(void);
+void draw_stop_watch(uint32_t elapsed_ms);
 
 #endif /* DISPLAY_DRAW_H */

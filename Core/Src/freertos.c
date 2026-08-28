@@ -212,9 +212,9 @@ void display_draw_task(void *argument)
   for(;;)
   {
     u8g2_ClearBuffer(&u8g2);
-    draw_clock_date();
+    draw_stop_watch(HAL_GetTick());
     u8g2_SendBuffer(&u8g2);
-    osDelay(1000); /* update display at 1 Hz */
+    osDelay(100); /* update display at 33 Hz */
   }
   /* USER CODE END display_draw_task */
 }
