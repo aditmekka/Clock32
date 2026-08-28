@@ -1,0 +1,38 @@
+name: CI build
+
+# Verify the firmware still compiles in Release mode on every push / PR.
+# This does NOT publish anything.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build Release firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install ARM GCC toolchain (arm-none-eabi)
+        run: |
+          set -euxo pipefail
+          URL=https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel/arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi.tar.xz
+          wget -q "$URL" -O arm-gnu-toolchain.tar.xz
+          sudo mkdir -p /opt/arm-gnu-toolchain
+          sudo tar -xf arm-gnu-toolchain.tar.xz -C /opt/arm-gnu-toolchain --strip-components=1
+          echo "/opt/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
+          arm-none-eabi-gcc --version
+
+      - name: Configure (Release)
+        run: cmake --preset Release
+
+      - name: Build (Release)
+        run: cmake --build --preset Release
+
+      - name: Show firmware size
+        run: arm-none-eabi-size build/Release/Clock32.elf

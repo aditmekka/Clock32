@@ -1,0 +1,67 @@
+name: Release firmware
+
+# Trigger on a new version tag (e.g. "v1.0.0") or manually from the Actions tab.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Needed to publish a GitHub Release with the firmware attached.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release firmware
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install ARM GCC toolchain (arm-none-eabi)
+        run: |
+          set -euxo pipefail
+          # Official Arm GNU Toolchain 13.2.Rel1 (x86_64 Linux)
+          URL=https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel/arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi.tar.xz
+          wget -q "$URL" -O arm-gnu-toolchain.tar.xz
+          sudo mkdir -p /opt/arm-gnu-toolchain
+          sudo tar -xf arm-gnu-toolchain.tar.xz -C /opt/arm-gnu-toolchain --strip-components=1
+          echo "/opt/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
+          arm-none-eabi-gcc --version
+
+      # Configure and build with the Release preset:
+      #   - flags become -Os -g0 (instead of -O0 -g3)
+      #   - the DEBUG macro is NOT defined (debug compile-time rules are excluded)
+      - name: Configure (Release)
+        run: cmake --preset Release
+
+      - name: Build (Release)
+        run: cmake --build --preset Release
+
+      - name: Show firmware size
+        run: arm-none-eabi-size build/Release/Clock32.elf
+
+      - name: Upload build artifacts (workflow run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clock32-firmware-release
+          path: |
+            build/Release/Clock32.elf
+            build/Release/Clock32.hex
+            build/Release/Clock32.bin
+            build/Release/Clock32.map
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/Release/Clock32.elf
+            build/Release/Clock32.hex
+            build/Release/Clock32.bin
+            build/Release/Clock32.map
+          generate_release_notes: true
