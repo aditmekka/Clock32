@@ -28,16 +28,17 @@
 
 #include "main.h"
 #include <stdio.h>
+#include <stdbool.h>
 #include "u8g2.h"
 #include "u8g2_stm32_hal.h"
 #include "get_time.h"
+#include "app.h"
 
 /* Global u8g2 context - defined in display_draw.c. */
 extern u8g2_t u8g2;
 
 void display_init(void);
 
-void draw_clock_date(void);
-void draw_stop_watch(uint32_t elapsed_ms);
+void draw_face(const AppState_t *snap);
 
 #endif /* DISPLAY_DRAW_H */

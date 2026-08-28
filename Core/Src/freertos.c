@@ -28,6 +28,7 @@
 #include "hmi.h"
 #include "usart.h"
 #include "display_draw.h"
+#include "app.h"
 #include <stdio.h>
 /* USER CODE END Includes */
 
@@ -54,15 +55,32 @@
 osThreadId_t userInputHandle;
 const osThreadAttr_t userInput_attributes = {
   .name = "userInput",
-  .stack_size = 128 * 4,
+  .stack_size = 160 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for displayDraw */
 osThreadId_t displayDrawHandle;
 const osThreadAttr_t displayDraw_attributes = {
   .name = "displayDraw",
-  .stack_size = 128 * 4,
+  .stack_size = 192 * 4,
   .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for appTask */
+osThreadId_t appTaskHandle;
+const osThreadAttr_t appTask_attributes = {
+  .name = "appTask",
+  .stack_size = 160 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
+/* Definitions for app_queue */
+osMessageQueueId_t app_queueHandle;
+const osMessageQueueAttr_t app_queue_attributes = {
+  .name = "app_queue"
+};
+/* Definitions for app_mutex */
+osMutexId_t app_mutexHandle;
+const osMutexAttr_t app_mutex_attributes = {
+  .name = "app_mutex"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,6 +111,7 @@ static void enc_debug_print(const EncoderEventMsg_t *msg)
 
 void user_input_task(void *argument);
 void display_draw_task(void *argument);
+void app_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -105,6 +124,9 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
+  /* Create the mutex(es) */
+  /* creation of app_mutex */
+  app_mutexHandle = osMutexNew(&app_mutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -118,6 +140,10 @@ void MX_FREERTOS_Init(void) {
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of app_queue */
+  app_queueHandle = osMessageQueueNew (16, sizeof(EncoderEventMsg_t), &app_queue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -129,8 +155,12 @@ void MX_FREERTOS_Init(void) {
   /* creation of displayDraw */
   displayDrawHandle = osThreadNew(display_draw_task, NULL, &displayDraw_attributes);
 
+  /* creation of appTask */
+  appTaskHandle = osThreadNew(app_task, NULL, &appTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  app_init(app_queueHandle, app_mutexHandle);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -160,14 +190,27 @@ void user_input_task(void *argument)
   {
     EncoderEventMsg_t ev = encoder_poll();
 
-    /* Debug print of every encoder event over UART1. */
+    /* Debug print of every encoder event over UART1, then hand it to app. */
     if (ev.event != EV_ENC_NONE)
     {
       enc_debug_print(&ev);
+      osMessageQueuePut(app_queueHandle, &ev, 0u, 0u);
     }
 
+    /* Timer alarm: 200 ms on / 200 ms off until acknowledged. */
+    if (app_alarm_active())
+    {
+      if (((HAL_GetTick() / 200u) % 2u) != 0u)
+      {
+        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+      }
+      else
+      {
+        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+      }
+    }
     /* Turn the buzzer off when the beep time has elapsed. */
-    if ((int32_t)(beep_until - HAL_GetTick()) <= 0)
+    else if ((int32_t)(beep_until - HAL_GetTick()) <= 0)
     {
       HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
     }
@@ -211,12 +254,25 @@ void display_draw_task(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    u8g2_ClearBuffer(&u8g2);
-    draw_stop_watch(HAL_GetTick());
-    u8g2_SendBuffer(&u8g2);
-    osDelay(100); /* update display at 33 Hz */
+    app_render(); /* snapshot state and draw the focused face */
+    osDelay(100); /* update display at 10 Hz */
   }
   /* USER CODE END display_draw_task */
+}
+
+/* USER CODE BEGIN Header_app_task */
+/**
+* @brief Function implementing the appTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_app_task */
+void app_task(void *argument)
+{
+  /* USER CODE BEGIN app_task */
+  /* Infinite loop */
+    app_run(argument);
+  /* USER CODE END app_task */
 }
 
 /* Private application code --------------------------------------------------*/
