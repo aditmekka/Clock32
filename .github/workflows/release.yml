@@ -30,6 +30,8 @@ jobs:
           wget -q "$URL" -O arm-gnu-toolchain.tar.xz
           sudo mkdir -p /opt/arm-gnu-toolchain
           sudo tar -xf arm-gnu-toolchain.tar.xz -C /opt/arm-gnu-toolchain --strip-components=1
+          # Export for THIS step (GITHUB_PATH only takes effect on later steps).
+          export PATH="/opt/arm-gnu-toolchain/bin:$PATH"
           echo "/opt/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
           arm-none-eabi-gcc --version
 
