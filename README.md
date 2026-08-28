@@ -63,5 +63,3 @@ st-flash --format ihex write build/Debug/Clock32.hex
 ## License
 
 The Clock32 project is licensed under the **GNU GPL v3** (see [LICENSE](LICENSE)).
-
-The user-created source files in `Core/` are additionally available under the **MIT License** (free to use with attribution).
