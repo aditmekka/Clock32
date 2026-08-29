@@ -29,6 +29,7 @@
 #include "usart.h"
 #include "display_draw.h"
 #include "app.h"
+#include "uart1.h"
 #include <stdio.h>
 /* USER CODE END Includes */
 
@@ -72,6 +73,13 @@ const osThreadAttr_t appTask_attributes = {
   .stack_size = 160 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal,
 };
+/* Definitions for uartTask */
+osThreadId_t uartTaskHandle;
+const osThreadAttr_t uartTask_attributes = {
+  .name = "uartTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for app_queue */
 osMessageQueueId_t app_queueHandle;
 const osMessageQueueAttr_t app_queue_attributes = {
@@ -107,11 +115,32 @@ static void enc_debug_print(const EncoderEventMsg_t *msg)
     HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)n, 100u);
   }
 }
+
+/* FreeRTOS stack-overflow hook: report which task overflowed, then stop.
+ * Keeps a stack overflow from silently corrupting the heap. */
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+  char buf[64];
+  int n;
+  (void)xTask;
+
+  n = snprintf(buf, sizeof(buf), "\r\n[FATAL] stack overflow in task '%s'\r\n",
+               pcTaskName != NULL ? pcTaskName : "?");
+  if (n > 0)
+  {
+    HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)n, 200u);
+  }
+  taskDISABLE_INTERRUPTS();
+  for( ;; )
+  {
+  }
+}
 /* USER CODE END FunctionPrototypes */
 
 void user_input_task(void *argument);
 void display_draw_task(void *argument);
 void app_task(void *argument);
+void uart_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -157,6 +186,9 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of appTask */
   appTaskHandle = osThreadNew(app_task, NULL, &appTask_attributes);
+
+  /* creation of uartTask */
+  uartTaskHandle = osThreadNew(uart_task, NULL, &uartTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -273,6 +305,22 @@ void app_task(void *argument)
   /* Infinite loop */
     app_run(argument);
   /* USER CODE END app_task */
+}
+
+/* USER CODE BEGIN Header_uart_task */
+/**
+* @brief Function implementing the uartTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_uart_task */
+void uart_task(void *argument)
+{
+  /* USER CODE BEGIN uart_task */
+  /* Interactive UART1 console (read/set the internal RTC). */
+  (void)argument;
+  uart_console_run();
+  /* USER CODE END uart_task */
 }
 
 /* Private application code --------------------------------------------------*/

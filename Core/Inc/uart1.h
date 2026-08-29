@@ -1,13 +1,11 @@
 /**
  ******************************************************************************
- * @file    get_time.c
- * @brief   tbd
+ * @file    uart1.h
+ * @brief   UART1 interactive console to read/set the internal RTC.
  * @author  aditmekka
  * @version 1.0
  * @date    August 2026
  * @license GNU GPL v3
- *
- * @copyright
  *
  * This file is part of Clock32.
  *
@@ -26,23 +24,14 @@
  ******************************************************************************
  */
 
-#include "get_time.h"
-#include "rtc.h"
+#ifndef UART1_H
+#define UART1_H
 
-/* NOTE: Time is read from the STM32 internal RTC (LSE, 24-hour format). */
-TimeDate_t get_time(void) {
-    TimeDate_t current_time;
+/**
+ * @brief  Run the UART1 console loop (blocks forever). Reads RX bytes from a
+ *         FreeRTOS stream buffer and parses line-oriented commands to read or
+ *         set the internal RTC. Intended to be called from a dedicated task.
+ */
+void uart_console_run(void);
 
-    /* Read the current time/date from the internal RTC. */
-    if (rtc_get_time(&current_time) != 0) {
-        /* RTC read failed - fall back to a sane default. */
-        current_time.hours = 0;
-        current_time.minutes = 0;
-        current_time.seconds = 0;
-        current_time.day = 27;
-        current_time.month = 8;
-        current_time.year = 2026;
-    }
-
-    return current_time;
-}
+#endif /* UART1_H */

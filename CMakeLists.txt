@@ -53,14 +53,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/display_draw.c
     Core/Src/u8g2_stm32_hal.c
     Core/Src/get_time.c
-    Core/Src/ds3231.c
+    Core/Src/uart1.c
     Core/Src/app.c
     ${U8G2_SOURCES}
     # TODO: re-add the sources below as the modules are implemented
     # Core/Src/ssd1306.c
     # Core/Src/battery.c
     # Core/Src/buzzer.c
-    # Core/Src/uart1.c
+    # Core/Src/ds3231.c
 )
 
 # Add include paths
@@ -86,8 +86,17 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 # Generate flashable firmware images (.hex / .bin) from the .elf,
 # alongside the linker map. Produced next to the .elf in the build dir.
+# Derive the toolchain bin directory (it is not guaranteed to be on PATH at
+# build time), so objcopy/size are always resolved to their full paths.
+get_filename_component(TOOLCHAIN_BIN_DIR "${CMAKE_C_COMPILER_AR}" DIRECTORY)
+if(WIN32)
+    set(TOOLCHAIN_OBJCOPY "${TOOLCHAIN_BIN_DIR}/arm-none-eabi-objcopy.exe")
+else()
+    set(TOOLCHAIN_OBJCOPY "${TOOLCHAIN_BIN_DIR}/arm-none-eabi-objcopy")
+endif()
+
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.hex
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
+    COMMAND ${TOOLCHAIN_OBJCOPY} -O ihex   $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.hex
+    COMMAND ${TOOLCHAIN_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
     COMMENT "Generating ${CMAKE_PROJECT_NAME}.hex / .bin firmware images"
 )

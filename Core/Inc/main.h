@@ -59,6 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define VBAT_Pin GPIO_PIN_0
 #define VBAT_GPIO_Port GPIOA
+#define LIGHT_Pin GPIO_PIN_1
+#define LIGHT_GPIO_Port GPIOA
 #define VBAT_EN_Pin GPIO_PIN_5
 #define VBAT_EN_GPIO_Port GPIOA
 #define ENC_A_Pin GPIO_PIN_6
