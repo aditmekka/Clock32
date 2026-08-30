@@ -48,7 +48,7 @@ void MX_RTC_Init(void)
   RTC_DateTypeDef DateToUpdate = {0};
 
   /* USER CODE BEGIN RTC_Init 1 */
-  uint8_t rtc_already_set = 0u;
+
   /* USER CODE END RTC_Init 1 */
 
   /** Initialize RTC Only
@@ -64,14 +64,17 @@ void MX_RTC_Init(void)
   /* USER CODE BEGIN Check_RTC_BKUP */
   /* The F1 RTC keeps only a seconds counter in hardware; the calendar date
      lives in RAM (hrtc.DateToUpdate). Mirror it into the backup registers so
-     it survives a reset while the backup domain stays powered. */
-  rtc_already_set = (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == RTC_BKP_MAGIC) ? 1u : 0u;
-  if (rtc_already_set != 0u)
+     it survives a reset while the backup domain stays powered. If it was
+     already configured, restore the date and return early so the default
+     time/date write below does not reset the running clock on every boot. */
+  if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == RTC_BKP_MAGIC)
   {
     hrtc.DateToUpdate.Year    = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR2);
     hrtc.DateToUpdate.Month   = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR3);
     hrtc.DateToUpdate.Date    = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR4);
     hrtc.DateToUpdate.WeekDay = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR5);
+
+    return;   /* already configured - keep the running clock as-is */
   }
   /* USER CODE END Check_RTC_BKUP */
 
@@ -95,15 +98,14 @@ void MX_RTC_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN RTC_Init 2 */
-  if (rtc_already_set == 0u)
-  {
-    HAL_PWR_EnableBkUpAccess();
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, RTC_BKP_MAGIC);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR2, 0x00u);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR3, 0x01u);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR4, 0x01u);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR5, RTC_WEEKDAY_MONDAY);
-  }
+  /* First boot only (an already-configured RTC returns early above): persist
+     the default calendar so it can be restored after the next reset. */
+  HAL_PWR_EnableBkUpAccess();
+  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, RTC_BKP_MAGIC);
+  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR2, 0x00u);
+  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR3, 0x01u);
+  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR4, 0x01u);
+  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR5, RTC_WEEKDAY_MONDAY);
   /* USER CODE END RTC_Init 2 */
 
 }
