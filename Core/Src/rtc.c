@@ -21,17 +21,73 @@
 #include "rtc.h"
 
 /* USER CODE BEGIN 0 */
-/* Magic value marking that the RTC calendar was already configured. */
+/* Magic value marking that the RTC epoch was already configured. */
 #define RTC_BKP_MAGIC 0x32F2u
 
-static uint8_t bcd2bin(uint8_t bcd){
-    return (uint8_t)(((bcd >> 4) & 0x0Fu) * 10u + (bcd & 0x0Fu));
+/* Days from 1970-01-01 to the epoch base used by this RTC. The counter holds
+   whole seconds since 2000-01-01 00:00:00, so one uint32_t carries both the
+   time and the date (valid until year 2136). */
+#define RTC_EPOCH_1970_DAYS  10957
+
+/**
+ * @brief  Days since 1970-01-01 for a Gregorian date (Hinnant algorithm).
+ */
+static int32_t days_from_civil(int32_t y, uint32_t m, uint32_t d){
+    y -= (m <= 2u) ? 1 : 0;
+    int32_t era = (y >= 0 ? y : y - 399) / 400;
+    uint32_t yoe = (uint32_t)(y - era * 400);                    /* [0, 399] */
+    uint32_t doy = (153u * ((m > 2u) ? (m - 3u) : (m + 9u)) + 2u) / 5u + d - 1u;
+    uint32_t doe = yoe * 365u + yoe / 4u - yoe / 100u + doy;
+    return era * 146097 + (int32_t)doe - 719468;
 }
 
-static uint8_t bin2bcd(uint8_t bin){
-    return (uint8_t)(((bin / 10u) << 4) | (bin % 10u));
+/**
+ * @brief  Gregorian date for a day count since 1970-01-01 (Hinnant algorithm).
+ */
+static void civil_from_days(int32_t z, int32_t *y, uint32_t *m, uint32_t *d){
+    z += 719468;
+    int32_t era = (z >= 0 ? z : z - 146096) / 146097;
+    uint32_t doe = (uint32_t)(z - era * 146097);                 /* [0, 146096] */
+    uint32_t yoe = (doe - doe / 1460u + doe / 36524u - doe / 146096u) / 365u;
+    int32_t yy = (int32_t)yoe + era * 400;
+    uint32_t doy = doe - (365u * yoe + yoe / 4u - yoe / 100u);
+    uint32_t mp = (5u * doy + 2u) / 153u;
+    uint32_t dd = doy - (153u * mp + 2u) / 5u + 1u;
+    uint32_t mm = (mp < 10u) ? (mp + 3u) : (mp - 9u);
+    *y = yy + ((mm <= 2u) ? 1 : 0);
+    *m = mm;
+    *d = dd;
 }
 
+/**
+ * @brief  Read the RTC counter (epoch seconds), safe against a mid-read
+ *         rollover of the high word.
+ */
+static uint32_t rtc_read_counter(void){
+    uint16_t hi1 = (uint16_t)(hrtc.Instance->CNTH & RTC_CNTH_RTC_CNT);
+    uint16_t lo  = (uint16_t)(hrtc.Instance->CNTL & RTC_CNTL_RTC_CNT);
+    uint16_t hi2 = (uint16_t)(hrtc.Instance->CNTH & RTC_CNTH_RTC_CNT);
+
+    if(hi1 != hi2){
+        hi1 = hi2;                  /* counter rolled over while reading */
+        lo  = (uint16_t)(hrtc.Instance->CNTL & RTC_CNTL_RTC_CNT);
+    }
+    return ((uint32_t)hi1 << 16) | lo;
+}
+
+/**
+ * @brief  Write the RTC counter (epoch seconds).
+ */
+static void rtc_write_counter(uint32_t value){
+    while((hrtc.Instance->CRL & RTC_CRL_RTOFF) == 0u){
+    }
+    hrtc.Instance->CRL |= RTC_CRL_CNF;                  /* enter config mode */
+    hrtc.Instance->CNTH = (uint16_t)((value >> 16) & 0xFFFFu);
+    hrtc.Instance->CNTL = (uint16_t)(value & 0xFFFFu);
+    hrtc.Instance->CRL &= (uint16_t)~RTC_CRL_CNF;       /* leave config mode */
+    while((hrtc.Instance->CRL & RTC_CRL_RTOFF) == 0u){
+    }
+}
 /* USER CODE END 0 */
 
 RTC_HandleTypeDef hrtc;
@@ -62,18 +118,11 @@ void MX_RTC_Init(void)
   }
 
   /* USER CODE BEGIN Check_RTC_BKUP */
-  /* The F1 RTC keeps only a seconds counter in hardware; the calendar date
-     lives in RAM (hrtc.DateToUpdate). Mirror it into the backup registers so
-     it survives a reset while the backup domain stays powered. If it was
-     already configured, restore the date and return early so the default
-     time/date write below does not reset the running clock on every boot. */
+  /* The RTC counter is a persistent epoch (seconds since 2000-01-01). If it
+     was already configured (magic in BKP_DR1), keep it as-is and return early
+     so the default time/date write below does not reset the clock on boot. */
   if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == RTC_BKP_MAGIC)
   {
-    hrtc.DateToUpdate.Year    = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR2);
-    hrtc.DateToUpdate.Month   = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR3);
-    hrtc.DateToUpdate.Date    = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR4);
-    hrtc.DateToUpdate.WeekDay = (uint8_t)HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR5);
-
     return;   /* already configured - keep the running clock as-is */
   }
   /* USER CODE END Check_RTC_BKUP */
@@ -99,13 +148,10 @@ void MX_RTC_Init(void)
   }
   /* USER CODE BEGIN RTC_Init 2 */
   /* First boot only (an already-configured RTC returns early above): persist
-     the default calendar so it can be restored after the next reset. */
+     the magic. The generated SetTime below already set the counter to 0
+     (epoch 0 = 2000-01-01 00:00:00). */
   HAL_PWR_EnableBkUpAccess();
   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, RTC_BKP_MAGIC);
-  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR2, 0x00u);
-  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR3, 0x01u);
-  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR4, 0x01u);
-  HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR5, RTC_WEEKDAY_MONDAY);
   /* USER CODE END RTC_Init 2 */
 
 }
@@ -148,49 +194,55 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 /* USER CODE BEGIN 1 */
 
 /**
+ * @brief  Read the current epoch seconds (since 2000-01-01) from the RTC.
+ * @retval Epoch seconds.
+ */
+uint32_t rtc_get_epoch(void){
+    return rtc_read_counter();
+}
+
+/**
  * @brief  Read the current time/date from the internal RTC into *time.
  * @param  time Pointer to the TimeDate_t to fill.
- * @retval 0 on success, 1 if time is NULL or a HAL call failed.
+ * @retval 0 on success, 1 if time is NULL.
  */
 uint8_t rtc_get_time(TimeDate_t *time){
-    RTC_TimeTypeDef sTime = {0};
-    RTC_DateTypeDef sDate = {0};
+    uint32_t epoch, sod;
+    int32_t days, year;
+    uint32_t month, day;
 
     if(time == NULL){
         return 1u;
     }
 
-    if(HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK){
-        return 1u;
-    }
-    if(HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK){
-        return 1u;
-    }
+    epoch = rtc_read_counter();
+    sod   = epoch % 86400u;
+    days  = (int32_t)(epoch / 86400u) + RTC_EPOCH_1970_DAYS;
+    civil_from_days(days, &year, &month, &day);
 
-    time->hours   = bcd2bin(sTime.Hours);
-    time->minutes = bcd2bin(sTime.Minutes);
-    time->seconds = bcd2bin(sTime.Seconds);
-    time->day     = bcd2bin(sDate.Date);
-    time->month   = bcd2bin(sDate.Month);
-    time->year    = (uint16_t)(2000u + bcd2bin(sDate.Year));
+    time->hours   = (uint8_t)(sod / 3600u);
+    time->minutes = (uint8_t)((sod % 3600u) / 60u);
+    time->seconds = (uint8_t)(sod % 60u);
+    time->day     = (uint8_t)day;
+    time->month   = (uint8_t)month;
+    time->year    = (uint16_t)year;
 
     return 0u;
 }
 
 /**
- * @brief  Write *time into the internal RTC (24-hour format) and persist the
- *         date in the backup registers so it survives a reset.
+ * @brief  Write *time into the internal RTC as an epoch (seconds since
+ *         2000-01-01 00:00:00).
  * @param  time Pointer to the TimeDate_t to write.
- * @retval 0 on success, 1 if time is NULL, out of range, or a HAL call failed.
+ * @retval 0 on success, 1 if time is NULL or out of range.
  */
 uint8_t rtc_set_time(const TimeDate_t *time){
-    RTC_TimeTypeDef sTime = {0};
-    RTC_DateTypeDef sDate = {0};
+    int32_t days;
+    uint32_t sod, epoch;
 
     if(time == NULL){
         return 1u;
     }
-
     if(time->hours > 23u || time->minutes > 59u || time->seconds > 59u){
         return 1u;
     }
@@ -201,30 +253,16 @@ uint8_t rtc_set_time(const TimeDate_t *time){
         return 1u;
     }
 
-    sTime.Hours   = bin2bcd(time->hours);
-    sTime.Minutes = bin2bcd(time->minutes);
-    sTime.Seconds = bin2bcd(time->seconds);
-    if(HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK){
-        return 1u;
-    }
+    days = days_from_civil((int32_t)time->year, (uint32_t)time->month, (uint32_t)time->day)
+           - RTC_EPOCH_1970_DAYS;
+    sod   = (uint32_t)time->hours * 3600u + (uint32_t)time->minutes * 60u + (uint32_t)time->seconds;
+    epoch = (uint32_t)days * 86400u + sod;
 
-    /* WeekDay is recomputed by HAL_RTC_SetDate, so any value is fine here. */
-    sDate.WeekDay = RTC_WEEKDAY_MONDAY;
-    sDate.Month   = bin2bcd(time->month);
-    sDate.Date    = bin2bcd(time->day);
-    sDate.Year    = bin2bcd((uint8_t)(time->year - 2000u));
-    if(HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK){
-        return 1u;
-    }
+    rtc_write_counter(epoch);
 
-    /* Save the date in the backup registers (the F1 has no on-chip date
-       register, so this is what keeps the calendar across a reset). */
+    /* Mark the RTC as configured so MX_RTC_Init keeps it on later boots. */
     HAL_PWR_EnableBkUpAccess();
     HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, RTC_BKP_MAGIC);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR2, (uint32_t)(time->year - 2000u));
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR3, (uint32_t)time->month);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR4, (uint32_t)time->day);
-    HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR5, (uint32_t)hrtc.DateToUpdate.WeekDay);
 
     return 0u;
 }

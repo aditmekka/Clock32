@@ -44,6 +44,7 @@ void MX_RTC_Init(void);
 /* USER CODE BEGIN Prototypes */
 uint8_t rtc_get_time(TimeDate_t *time);
 uint8_t rtc_set_time(const TimeDate_t *time);
+uint32_t rtc_get_epoch(void);
 
 /* USER CODE END Prototypes */
 
