@@ -25,9 +25,9 @@
 #define RTC_BKP_MAGIC 0x32F2u
 
 /* Days from 1970-01-01 to the epoch base used by this RTC. The counter holds
-   whole seconds since 2000-01-01 00:00:00, so one uint32_t carries both the
-   time and the date (valid until year 2136). */
-#define RTC_EPOCH_1970_DAYS  10957
+   whole seconds since 2020-01-01 00:00:00, so one uint32_t carries both the
+   time and the date (valid until year 2156). */
+#define RTC_EPOCH_1970_DAYS  18262
 
 /**
  * @brief  Days since 1970-01-01 for a Gregorian date (Hinnant algorithm).
@@ -118,7 +118,7 @@ void MX_RTC_Init(void)
   }
 
   /* USER CODE BEGIN Check_RTC_BKUP */
-  /* The RTC counter is a persistent epoch (seconds since 2000-01-01). If it
+  /* The RTC counter is a persistent epoch (seconds since 2020-01-01). If it
      was already configured (magic in BKP_DR1), keep it as-is and return early
      so the default time/date write below does not reset the clock on boot. */
   if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == RTC_BKP_MAGIC)
@@ -149,7 +149,7 @@ void MX_RTC_Init(void)
   /* USER CODE BEGIN RTC_Init 2 */
   /* First boot only (an already-configured RTC returns early above): persist
      the magic. The generated SetTime below already set the counter to 0
-     (epoch 0 = 2000-01-01 00:00:00). */
+     (epoch 0 = 2020-01-01 00:00:00). */
   HAL_PWR_EnableBkUpAccess();
   HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, RTC_BKP_MAGIC);
   /* USER CODE END RTC_Init 2 */
@@ -194,7 +194,7 @@ void HAL_RTC_MspDeInit(RTC_HandleTypeDef* rtcHandle)
 /* USER CODE BEGIN 1 */
 
 /**
- * @brief  Read the current epoch seconds (since 2000-01-01) from the RTC.
+ * @brief  Read the current epoch seconds (since 2020-01-01) from the RTC.
  * @retval Epoch seconds.
  */
 uint32_t rtc_get_epoch(void){
@@ -232,7 +232,7 @@ uint8_t rtc_get_time(TimeDate_t *time){
 
 /**
  * @brief  Write *time into the internal RTC as an epoch (seconds since
- *         2000-01-01 00:00:00).
+ *         2020-01-01 00:00:00).
  * @param  time Pointer to the TimeDate_t to write.
  * @retval 0 on success, 1 if time is NULL or out of range.
  */
@@ -249,7 +249,7 @@ uint8_t rtc_set_time(const TimeDate_t *time){
     if(time->day < 1u || time->day > 31u || time->month < 1u || time->month > 12u){
         return 1u;
     }
-    if(time->year < 2000u || time->year > 2099u){
+    if(time->year < 2020u || time->year > 2099u){
         return 1u;
     }
 
