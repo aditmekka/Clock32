@@ -75,15 +75,16 @@ static void uart_puts(const char *s){
 static void uart_print_help(void){
     uart_puts("\r\n"
               "UART1 RTC console\r\n"
-              "  ?                            show this help\r\n"
-              "  time                         show current RTC time\r\n"
-              "  settime HH:MM:SS DD/MM/YYYY  set RTC time and date\r\n"
+              "  ?                        show this help\r\n"
+              "  time                     show current RTC time\r\n"
+              "  settime HH:MM:SS         set RTC time\r\n"
+              "  setdate DD/MM/YYYY       set RTC date\r\n"
               "\r\n> ");
 }
 
 static void uart_print_time(void){
     TimeDate_t t;
-    char buf[48];
+    char buf[64];
     int n;
 
     if(rtc_get_time(&t) != 0u){
@@ -91,9 +92,12 @@ static void uart_print_time(void){
         return;
     }
 
-    n = snprintf(buf, sizeof(buf), "Time: %02u:%02u:%02u  Date: %02u/%02u/%04u\r\n",
+    /*Prints Epoch in Seconds since 2020-01-01 00:00;:00*/
+    n = snprintf(buf, sizeof(buf),
+                 "Time: %02u:%02u:%02u  Date: %02u/%02u/%04u  Epoch: %lu\r\n",
                  (unsigned)t.hours, (unsigned)t.minutes, (unsigned)t.seconds,
-                 (unsigned)t.day, (unsigned)t.month, (unsigned)t.year);
+                 (unsigned)t.day, (unsigned)t.month, (unsigned)t.year,
+                 (unsigned long)rtc_get_epoch());
     if(n > 0){
         HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)n, 100u);
     }
@@ -123,12 +127,12 @@ static int parse_uint(const char **pp, int max_digits, int min, int max){
 }
 
 /**
- * @brief  Parse "HH:MM:SS DD/MM/YYYY" into *t. Done manually (no scanf) because
- *         the scanf family is very stack-hungry on this small MCU.
+ * @brief  Parse "HH:MM:SS" into the h/m/s fields of *t. Done manually (no
+ *         scanf) because the scanf family is very stack-hungry on this MCU.
  * @retval 0 on success, 1 on any format or range error.
  */
 static int parse_settime(const char *s, TimeDate_t *t){
-    int hh, mm, ss, dd, mo, yy;
+    int hh, mm, ss;
 
     while(*s == ' '){
         s++;   /* skip space(s) after the command word */
@@ -141,24 +145,72 @@ static int parse_settime(const char *s, TimeDate_t *t){
     if(mm < 0 || *s != ':') return 1;
     s++;
     ss = parse_uint(&s, 2, 0, 59);
-    if(ss < 0 || *s != ' ') return 1;
-    s++;
+    if(ss < 0 || *s != '\0') return 1;
+
+    t->hours   = (uint8_t)hh;
+    t->minutes = (uint8_t)mm;
+    t->seconds = (uint8_t)ss;
+    return 0;
+}
+
+/**
+ * @brief  Parse "DD/MM/YYYY" into the d/m/y fields of *t. Done manually (no
+ *         scanf) because the scanf family is very stack-hungry on this MCU.
+ * @retval 0 on success, 1 on any format or range error.
+ */
+static int parse_setdate(const char *s, TimeDate_t *t){
+    int dd, mo, yy;
+
+    while(*s == ' '){
+        s++;   /* skip space(s) after the command word */
+    }
+
     dd = parse_uint(&s, 2, 1, 31);
     if(dd < 0 || *s != '/') return 1;
     s++;
     mo = parse_uint(&s, 2, 1, 12);
     if(mo < 0 || *s != '/') return 1;
     s++;
-    yy = parse_uint(&s, 4, 2000, 2099);
+    yy = parse_uint(&s, 4, 2020, 2099);
     if(yy < 0 || *s != '\0') return 1;
 
-    t->hours   = (uint8_t)hh;
-    t->minutes = (uint8_t)mm;
-    t->seconds = (uint8_t)ss;
-    t->day     = (uint8_t)dd;
-    t->month   = (uint8_t)mo;
-    t->year    = (uint16_t)yy;
+    t->day   = (uint8_t)dd;
+    t->month = (uint8_t)mo;
+    t->year  = (uint16_t)yy;
     return 0;
+}
+
+/**
+ * @brief  Merge the parsed fields of *src into the running clock (the fields
+ *         not covered by the command are kept as-is) and write the RTC.
+ * @param  src       Parsed values.
+ * @param  set_mask  Bit 0 = apply h/m/s, bit 1 = apply d/m/y.
+ */
+static void uart_apply_set(const TimeDate_t *src, unsigned set_mask){
+    TimeDate_t t;
+
+    if(rtc_get_time(&t) != 0u){
+        uart_puts("Error: cannot read RTC\r\n");
+        return;
+    }
+
+    if((set_mask & 1u) != 0u){
+        t.hours   = src->hours;
+        t.minutes = src->minutes;
+        t.seconds = src->seconds;
+    }
+    if((set_mask & 2u) != 0u){
+        t.day   = src->day;
+        t.month = src->month;
+        t.year  = src->year;
+    }
+
+    if(rtc_set_time(&t) == 0u){
+        uart_puts("OK, RTC set: ");
+        uart_print_time();
+    }else{
+        uart_puts("Error: values out of range\r\n");
+    }
 }
 
 static void uart_handle_cmd(const char *line){
@@ -181,17 +233,20 @@ static void uart_handle_cmd(const char *line){
     }else if(strcmp(cmd, "TIME") == 0){
         uart_print_time();
     }else if(strcmp(cmd, "SETTIME") == 0){
-        TimeDate_t t;
+        TimeDate_t t = {0};
 
         if(parse_settime(line + i, &t) == 0){
-            if(rtc_set_time(&t) == 0u){
-                uart_puts("OK, RTC set: ");
-                uart_print_time();
-            }else{
-                uart_puts("Error: values out of range\r\n");
-            }
+            uart_apply_set(&t, 1u);
         }else{
-            uart_puts("Usage: settime HH:MM:SS DD/MM/YYYY\r\n");
+            uart_puts("Usage: settime HH:MM:SS\r\n");
+        }
+    }else if(strcmp(cmd, "SETDATE") == 0){
+        TimeDate_t t = {0};
+
+        if(parse_setdate(line + i, &t) == 0){
+            uart_apply_set(&t, 2u);
+        }else{
+            uart_puts("Usage: setdate DD/MM/YYYY\r\n");
         }
     }else{
         uart_puts("Unknown command. Send '?' for help.\r\n");
