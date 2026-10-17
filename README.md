@@ -6,9 +6,10 @@ A compact digital clock firmware for the **STM32F103** (Blue Pill style), featur
 
 ## Features
 
-- **Clock** – live time and date from the STM32 **internal RTC**, stored as an epoch counter (seconds since 2020-01-01 00:00:00); it keeps running on VBAT when the device is unpowered
+- **Clock** – live time and date from the STM32 **internal RTC**, stored as an epoch counter (seconds since 2020-01-01 00:00:00); it keeps running on VBAT when the device is unpowered. Focus the face with the encoder to set hours, minutes, seconds, day, month and year
 - **Stopwatch** – start / pause / reset, with hours, minutes and seconds
 - **Timer** – set minutes and seconds, run / pause / reset, with an audible + visual alarm when it finishes
+- **Battery** – cell voltage on ADC1_IN0 through a switched 4k3/4k3 divider; one software trigger converts the 4-rank group into a circular DMA buffer (4x oversampling), mapped to a charge percentage on a 1S Li-ion curve
 - **OLED display** – SH1106 128x64 driven by the u8g2 library
 - **Rotary encoder** – single encoder (rotate + push button) provides all input
 - **FreeRTOS** – task-based architecture (HMI, app logic, display rendering)
@@ -35,6 +36,7 @@ Core/
     get_time.c        Time readout helper
     uart1.c           UART console (read/set time & date, 115200 8N1)
     hmi.c             Rotary encoder input
+    battery.c         Battery measurement (switched divider, ADC1 + DMA)
     u8g2_stm32_hal.c  u8g2 <-> STM32 HAL glue
     ds3231.c          DS3231 driver (legacy, not part of the build)
 Drivers/        STM32 HAL + CMSIS + u8g2
@@ -73,6 +75,7 @@ Connect USART1 (PA9 = TX, PA10 = RX) at **115200 8N1** for an interactive consol
 | `time` | show current time, date and the raw RTC epoch counter |
 | `settime HH:MM:SS` | set the time only (keeps the current date) |
 | `setdate DD/MM/YYYY` | set the date only (keeps the current time) |
+| `batt` | show the last battery reading (mV and charge) |
 
 The internal RTC counter stores seconds since **2020-01-01 00:00:00** and keeps counting from VBAT while the device is unpowered.
 
