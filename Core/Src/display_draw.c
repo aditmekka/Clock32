@@ -54,19 +54,24 @@ void display_init(void){
     u8g2_SendBuffer(&u8g2);
 }
 
-void draw_clock_date(void){
-    TimeDate_t current_time = get_time();
+void draw_clock_date(TimeDate_t frozen, _Bool is_focused, ClkField_t field, _Bool editing){
+    /* A focused face shows the snapshot taken when it was focused, so the RTC
+     * ticking underneath never moves the numbers while they are being set. The
+     * unfocused face always follows the live RTC. */
+    TimeDate_t current_time = is_focused ? frozen : get_time();
 
     u8g2_SetBitmapMode(&u8g2, 1);
     u8g2_SetFontMode(&u8g2, 1);
 
     u8g2_SetFont(&u8g2, u8g2_font_profont17_tr);
 
-    u8g2_DrawIntZeroPad(&u8g2, 20, 52, current_time.day, 2); //dd
-    u8g2_DrawStr(&u8g2, 38, 52, "/");
+    /* The date is spaced so each field keeps a 1 px gap to its box and to the
+     * separators; the row is still centred (x 13..115). */
+    u8g2_DrawIntZeroPad(&u8g2, 15, 52, current_time.day, 2); //dd
+    u8g2_DrawStr(&u8g2, 35, 52, "/");
     u8g2_DrawIntZeroPad(&u8g2, 47, 52, current_time.month, 2); //mm
-    u8g2_DrawStr(&u8g2, 65, 52, "/");
-    u8g2_DrawIntZeroPad(&u8g2, 74, 52, current_time.year, 4); //yyyy
+    u8g2_DrawStr(&u8g2, 67, 52, "/");
+    u8g2_DrawIntZeroPad(&u8g2, 79, 52, current_time.year, 4); //yyyy
 
     u8g2_DrawIntZeroPad(&u8g2, 97, 31, current_time.seconds, 2); //ss
 
@@ -80,7 +85,34 @@ void draw_clock_date(void){
     }
 
     u8g2_SetDrawColor(&u8g2, 2);
-    u8g2_DrawBox(&u8g2, 13, 10, 103, 23);
+    u8g2_DrawBox(&u8g2, 12, 9, 105, 25);
+
+    /* Field marker, XORed so that it reads both on the inverted time block and
+     * on the plain date line: hollow while the field is only selected, filled
+     * while its value is being changed. Every box keeps a 1 px gap to the
+     * digits, which is why the time block above had to grow by one pixel. */
+    if(is_focused){
+        uint8_t x = 0u, y = 0u, w = 0u, h = 0u;
+
+        switch(field){
+        case CLK_FIELD_HOURS:   x = 13u; y = 10u; w = 34u; h = 23u; break;
+        case CLK_FIELD_MINUTES: x = 60u; y = 10u; w = 34u; h = 23u; break;
+        case CLK_FIELD_SECONDS: x = 95u; y = 18u; w = 21u; h = 15u; break;
+        case CLK_FIELD_DAY:     x = 13u; y = 39u; w = 21u; h = 15u; break;
+        case CLK_FIELD_MONTH:   x = 45u; y = 39u; w = 21u; h = 15u; break;
+        case CLK_FIELD_YEAR:    x = 77u; y = 39u; w = 39u; h = 15u; break;
+        default: break;
+        }
+
+        if(w > 0u){
+            u8g2_DrawFrame(&u8g2, x, y, w, h);
+            if(editing){
+                u8g2_DrawBox(&u8g2, x, y, w, h);
+            }
+        }
+    }
+
+    u8g2_SetDrawColor(&u8g2, 1);
 }
 
 void draw_stop_watch(uint32_t elapsed_ms, _Bool is_running, SwMenuSel_t menu, _Bool is_focused){
@@ -190,10 +222,48 @@ void draw_timer(uint32_t remaining_ms, TmState_t state, TmField_t field, _Bool e
     }
 }
 
+void draw_battery_percentage(uint8_t percentage, uint16_t millivolts){
+    char buffer[8];
+    uint8_t charge_width;
+
+    if(percentage > 100){
+        percentage = 100;   //clamp: bar and readout are defined for 0..100
+    }
+
+    u8g2_SetFontMode(&u8g2, 1);
+
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+    u8g2_DrawStr(&u8g2, 44, 12, "BATTERY");
+    u8g2_DrawFrame(&u8g2, 42, 2, 45, 12);
+
+    //empty battery
+    u8g2_DrawFrame(&u8g2, 34, 17, 60, 31);
+    u8g2_DrawFrame(&u8g2, 29, 28, 5, 9);
+
+    //percentage, centred in the battery body
+    sprintf(buffer, "%u%%", (unsigned)percentage);
+    u8g2_SetFont(&u8g2, u8g2_font_profont22_tr);
+    u8g2_DrawStr(&u8g2, 35 + (58 - u8g2_GetStrWidth(&u8g2, buffer)) / 2, 39, buffer);
+
+    //measured cell voltage, centred under the battery body
+    sprintf(buffer, "%umV", (unsigned)millivolts);
+    u8g2_SetFont(&u8g2, u8g2_font_profont12_tr);
+    u8g2_DrawStr(&u8g2, 64 - u8g2_GetStrWidth(&u8g2, buffer) / 2, 59, buffer);
+
+    //progress box: charge bar scaled to the percentage, XOR keeps the readout readable
+    charge_width = (uint8_t)((58 * percentage) / 100);
+    if(charge_width > 0){
+        u8g2_SetDrawColor(&u8g2, 2);
+        u8g2_DrawBox(&u8g2, 35, 18, charge_width, 29);
+        u8g2_SetDrawColor(&u8g2, 1);
+    }
+}
+
 void draw_face(const AppState_t *snap){
     switch(snap->face){
     case FACE_CLOCK:
-        draw_clock_date();
+        draw_clock_date(snap->clock_time, snap->focused, snap->clock_field,
+                        snap->clock_editing);
         break;
     case FACE_STOPWATCH:
         draw_stop_watch(snap->sw_elapsed_ms,
@@ -208,6 +278,11 @@ void draw_face(const AppState_t *snap){
                 snap->timer_editing,
                 snap->focused);
         break;
+    case FACE_BATTERY:
+        draw_battery_percentage(snap->battery_pct, snap->battery_mv);
+        break;
+    case FACE_COUNT:
+        break;              /* not a face: only the rotation modulus */
     }
 
     /* Timer alarm: flash the whole screen (XOR) in sync with the buzzer. */

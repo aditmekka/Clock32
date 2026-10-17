@@ -31,11 +31,14 @@
 
 #include "main.h"
 #include "cmsis_os2.h"
+#include "get_time.h"
 
 typedef enum{
     FACE_CLOCK,
     FACE_STOPWATCH,
-    FACE_TIMER
+    FACE_TIMER,
+    FACE_BATTERY,
+    FACE_COUNT              /* number of faces, keep last */
 }Face_t;
 
 typedef enum{
@@ -57,9 +60,22 @@ typedef enum{
     TM_FIELD_START_PAUSE
 }TmField_t;
 
+typedef enum{
+    CLK_FIELD_HOURS,
+    CLK_FIELD_MINUTES,
+    CLK_FIELD_SECONDS,
+    CLK_FIELD_DAY,
+    CLK_FIELD_MONTH,
+    CLK_FIELD_YEAR,
+    CLK_FIELD_COUNT         /* number of fields, keep last */
+}ClkField_t;
+
 typedef struct{
     Face_t      face;
     _Bool       focused;
+    ClkField_t  clock_field;
+    _Bool       clock_editing;
+    TimeDate_t  clock_time;     /* frozen while the face is focused */
     _Bool       sw_running;
     uint32_t    sw_elapsed_ms;
     SwMenuSel_t sw_menu;
@@ -69,6 +85,8 @@ typedef struct{
     uint32_t    timer_set_ms;
     uint32_t    timer_remaining_ms;
     _Bool       alarm_active;
+    uint8_t     battery_pct;
+    uint16_t    battery_mv;
 }AppState_t;
 
 void app_init(osMessageQueueId_t q, osMutexId_t m);

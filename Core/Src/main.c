@@ -30,6 +30,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "display_draw.h"
+#include "battery.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -102,6 +103,7 @@ int main(void)
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   display_init();
+  battery_init();   /* calibrate ADC1, arm the battery DMA */
   /* USER CODE END 2 */
 
   /* Init scheduler */
