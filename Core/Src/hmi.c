@@ -63,7 +63,9 @@ EncoderEventMsg_t encoder_poll(void)
 
         if (detents != 0) {
             event_msg.event = EV_ENC_ROTATED;
-            event_msg.value = detents;
+            /* TIM3 counts down for a clockwise turn on this board, so negate the
+             * raw delta to keep the documented convention: + = CW, - = CCW. */
+            event_msg.value = (int8_t)(-detents);
             return event_msg;
         }
     }
