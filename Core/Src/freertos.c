@@ -225,26 +225,23 @@ void user_input_task(void *argument)
     /* Debug print of every encoder event over UART1, then hand it to app. */
     if (ev.event != EV_ENC_NONE)
     {
-      enc_debug_print(&ev);
+      /* enc_debug_print(&ev); */   /* disabled encoder debug */
       osMessageQueuePut(app_queueHandle, &ev, 0u, 0u);
     }
 
     /* Timer alarm: 200 ms on / 200 ms off until acknowledged. */
     if (app_alarm_active())
     {
-      if (((HAL_GetTick() / 200u) % 2u) != 0u)
-      {
-        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-      }
-      else
-      {
-        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-      }
+        if (((HAL_GetTick() / 200u) % 2u) != 0u){
+            HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+        }
+        else{
+            HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+        }
     }
     /* Turn the buzzer off when the beep time has elapsed. */
-    else if ((int32_t)(beep_until - HAL_GetTick()) <= 0)
-    {
-      HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+    else if ((int32_t)(beep_until - HAL_GetTick()) <= 0){
+        HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
     }
 
     switch (ev.event)
