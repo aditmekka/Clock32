@@ -55,10 +55,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/get_time.c
     Core/Src/uart1.c
     Core/Src/app.c
+    Core/Src/battery.c
     ${U8G2_SOURCES}
     # TODO: re-add the sources below as the modules are implemented
     # Core/Src/ssd1306.c
-    # Core/Src/battery.c
     # Core/Src/buzzer.c
     # Core/Src/ds3231.c
 )

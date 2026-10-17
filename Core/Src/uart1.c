@@ -28,6 +28,7 @@
 #include "usart.h"
 #include "rtc.h"
 #include "get_time.h"
+#include "battery.h"
 #include "FreeRTOS.h"
 #include "stream_buffer.h"
 #include <stdio.h>
@@ -79,6 +80,7 @@ static void uart_print_help(void){
               "  time                     show current RTC time\r\n"
               "  settime HH:MM:SS         set RTC time\r\n"
               "  setdate DD/MM/YYYY       set RTC date\r\n"
+              "  batt                     show battery voltage and charge\r\n"
               "\r\n> ");
 }
 
@@ -98,6 +100,22 @@ static void uart_print_time(void){
                  (unsigned)t.hours, (unsigned)t.minutes, (unsigned)t.seconds,
                  (unsigned)t.day, (unsigned)t.month, (unsigned)t.year,
                  (unsigned long)rtc_get_epoch());
+    if(n > 0){
+        HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)n, 100u);
+    }
+}
+
+/**
+ * @brief  Report the cached battery reading. The app task owns the ADC and
+ *         refreshes this value every BATTERY_SAMPLE_PERIOD_MS, so the console
+ *         never touches the ADC itself.
+ */
+static void uart_print_battery(void){
+    char buf[64];
+    int n;
+
+    n = snprintf(buf, sizeof(buf), "Battery: %u mV, %u%%\r\n",
+                 (unsigned)battery_millivolts(), (unsigned)battery_percentage());
     if(n > 0){
         HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)n, 100u);
     }
@@ -232,6 +250,8 @@ static void uart_handle_cmd(const char *line){
         uart_print_help();
     }else if(strcmp(cmd, "TIME") == 0){
         uart_print_time();
+    }else if(strcmp(cmd, "BATT") == 0){
+        uart_print_battery();
     }else if(strcmp(cmd, "SETTIME") == 0){
         TimeDate_t t = {0};
 
