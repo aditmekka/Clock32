@@ -15,6 +15,15 @@ A compact digital clock firmware for the **STM32F103** (Blue Pill style), featur
 - **FreeRTOS** – task-based architecture (HMI, app logic, display rendering)
 - **UART console** – 115200 8N1 serial console to read/set the clock (`time`, `settime HH:MM:SS`, `setdate DD/MM/YYYY`)
 
+## User interface
+
+Four faces, driven by a single encoder (rotate / press / long press):
+
+![The four faces: clock, stopwatch, timer, battery](docs/images/overview.png)
+
+See [docs/ui.md](docs/ui.md) for every screen, the editing behaviour of each
+face, and how the pictures are generated.
+
 ## Hardware
 
 | Part | Detail |
